@@ -598,14 +598,6 @@ print(f"Accuracy: {final_accuracy:.4f}")
 print(f"F1-Score (Macro): {final_f1_macro:.4f}")
 print(f"F1-Score (Weighted): {final_f1_weighted:.4f}")
 
-# Top-K accuracy
-all_probs = np.array(all_probs)
-top_3_acc = np.mean([label in np.argsort(probs)[-3:] for label, probs in zip(all_labels, all_probs)])
-top_5_acc = np.mean([label in np.argsort(probs)[-5:] for label, probs in zip(all_labels, all_probs)])
-
-print(f"Top-3 Accuracy: {top_3_acc:.4f}")
-print(f"Top-5 Accuracy: {top_5_acc:.4f}")
-
 print("\n🎉 Advanced Multi-Class Classification completed successfully!")
 print("✅ Advantages of this approach:")
 print("   - Direct prediction: embedding → author (no dataset comparison needed)")
