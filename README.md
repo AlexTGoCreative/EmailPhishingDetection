@@ -49,25 +49,119 @@ This system transforms the traditional Siamese network approach (which requires 
 
 ## 🏗️ Architecture
 
+### High-Level Architecture Flow
 ```
 Input: STAR Embedding (1024D)
     ↓
 Input Normalization & Projection (1024 → 768)
     ↓
-Positional Encoding
+Positional Encoding (Sinusoidal)
     ↓
-Transformer Layers (2 layers, 12 heads)
+Transformer Stack (2 layers, 12 heads each)
+    ├── Multi-Head Self-Attention (12 heads)
+    ├── Residual Connection + LayerNorm
+    ├── Feed-Forward Network (768 → 1536 → 768)
+    └── Residual Connection + LayerNorm
     ↓
-Feature Extraction [768 → 512 → 256]
+Progressive Feature Extraction
+    ├── Linear: 768 → 512 + LayerNorm + GELU + Dropout(0.15)
+    ├── Linear: 512 → 256 + LayerNorm + GELU + Dropout(0.18)
+    └── Attention Pooling (256 → 64 → 1)
     ↓
-Attention Weighting
+Feature Fusion
+    ├── Original Features (768D)
+    ├── Attention-Weighted Features (256D)
+    └── Concatenation (1024D total)
     ↓
-Feature Concatenation [original + weighted]
+Classification Head
+    ├── Linear: 1024 → 256 + ReLU + Dropout(0.2)
+    ├── Linear: 256 → 128 + ReLU + Dropout(0.2)
+    └── Linear: 128 → num_classes
     ↓
-Classification Head [512 → 256 → 128 → num_classes]
-    ↓
-Output: Author Prediction + Confidence
+Output: Author Prediction + Confidence Scores
 ```
+
+### Detailed Component Specifications
+
+#### 1. Input Processing Layer
+- **Input Dimension:** 1024 (STAR embedding size)
+- **Normalization:** LayerNorm for stable training
+- **Projection:** Linear layer (1024 → 768) with Xavier initialization
+- **Purpose:** Standardize input and reduce dimensionality
+
+#### 2. Positional Encoding
+- **Type:** Sinusoidal encoding
+- **Formula:** `PE(pos, 2i) = sin(pos / 10000^(2i/d_model))`
+- **Purpose:** Add positional information for transformer attention
+- **Max Length:** 5000 positions (configurable)
+
+#### 3. Transformer Stack
+- **Layers:** 2 transformer blocks
+- **Attention Heads:** 12 per layer
+- **Head Dimension:** 64 (768 ÷ 12)
+- **Feed-Forward Dimension:** 1536 (2 × 768)
+- **Activation:** GELU (Gaussian Error Linear Unit)
+- **Dropout:** 0.15 throughout
+
+#### 4. Feature Extraction Pipeline
+- **Stage 1:** 768 → 512 dimensions
+- **Stage 2:** 512 → 256 dimensions
+- **Normalization:** LayerNorm after each linear layer
+- **Activation:** GELU for smooth gradients
+- **Progressive Dropout:** 0.15 → 0.18 (increasing regularization)
+
+#### 5. Attention Pooling Mechanism
+- **Input:** 256-dimensional features
+- **Hidden Layer:** 64 dimensions with Tanh activation
+- **Output:** Single attention weight per feature
+- **Purpose:** Learn which features are most important for classification
+
+#### 6. Feature Fusion Strategy
+- **Original Features:** 768D (from transformer output)
+- **Weighted Features:** 256D (attention-pooled)
+- **Concatenation:** 1024D total feature vector
+- **Purpose:** Combine global and local feature representations
+
+#### 7. Classification Head
+- **Layer 1:** 1024 → 256 + ReLU + Dropout(0.2)
+- **Layer 2:** 256 → 128 + ReLU + Dropout(0.2)
+- **Output Layer:** 128 → num_classes (linear)
+- **Total Parameters:** ~2-5M (depending on num_classes)
+
+### Mathematical Foundations
+
+#### Multi-Head Attention
+```
+Attention(Q, K, V) = softmax(QK^T/√d_k)V
+MultiHead(Q, K, V) = Concat(head_1, ..., head_h)W^O
+where head_i = Attention(QW_i^Q, KW_i^K, VW_i^V)
+```
+
+#### Layer Normalization
+```
+LayerNorm(x) = γ ⊙ (x - μ) / σ + β
+where μ = mean(x), σ = std(x)
+```
+
+#### GELU Activation
+```
+GELU(x) = 0.5x(1 + tanh(√(2/π)(x + 0.044715x³)))
+```
+
+#### Focal Loss
+```
+FL(p_t) = -α(1-p_t)^γ log(p_t)
+where p_t = model's confidence for true class
+```
+
+### Architecture Advantages
+
+1. **Hierarchical Feature Learning:** Progressive dimensionality reduction captures features at multiple scales
+2. **Self-Attention Mechanism:** Captures complex relationships within embeddings
+3. **Residual Connections:** Prevents vanishing gradients and enables deeper networks
+4. **Attention Pooling:** Learns to focus on most discriminative features
+5. **Feature Fusion:** Combines different representations for robust classification
+6. **Regularization:** Multiple dropout layers prevent overfitting
 
 ## 🚀 Installation
 
@@ -114,14 +208,190 @@ print(f'Predicted author: {predicted_author} (confidence: {confidence:.3f})')
 
 ## 🔧 Model Components
 
-### 1. AdvancedClassifierNetwork
-The main model class with the following key components:
+### 1. PositionalEncoding
+```python
+class PositionalEncoding(nn.Module):
+    """Positional encoding for transformer-like attention"""
+```
+
+**Purpose:**
+Transformers do not inherently know the order of sequences. PositionalEncoding injects information about the position of elements in a sequence so the model can leverage order.
+
+**How it works:**
+- Precomputes sine and cosine values of different frequencies for each position
+- Adds them to input embeddings to encode relative positions
+- `forward(x)` adds this positional information to the input tensor
+
+**Mathematical Foundation:**
+```
+PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+```
+
+**Inputs/Outputs:**
+- **Input:** `(batch_size, seq_len, embed_dim)`
+- **Output:** `(batch_size, seq_len, embed_dim)` with positional info added
+
+**Implementation Details:**
+```python
+def __init__(self, d_model, max_len=5000):
+    super().__init__()
+    pe = torch.zeros(max_len, d_model)
+    position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
+                        (-math.log(10000.0) / d_model))
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term)
+    pe = pe.unsqueeze(0).transpose(0, 1)
+    self.register_buffer('pe', pe)
+```
+
+### 2. MultiHeadSelfAttention
+```python
+class MultiHeadSelfAttention(nn.Module):
+    """Multi-head self-attention with residual connections"""
+```
+
+**Purpose:**
+Implements multi-head self-attention, which allows the model to focus on different parts of the input sequence simultaneously.
+
+**Key Components:**
+- **Linear projections:** Project input into queries (Q), keys (K), and values (V)
+- **Scaled dot-product attention:** Measures the relevance of each token to every other token
+- **Multiple heads:** Enables capturing diverse relationships
+- **Dropout & residual connections:** Regularization and stabilizing learning
+
+**Mathematical Foundation:**
+```
+Attention(Q, K, V) = softmax(QK^T/√d_k)V
+MultiHead(Q, K, V) = Concat(head_1, ..., head_h)W^O
+where head_i = Attention(QW_i^Q, KW_i^K, VW_i^V)
+```
+
+**Inputs/Outputs:**
+- **Input:** `(batch_size, seq_len, embed_dim)`
+- **Output:** `(batch_size, seq_len, embed_dim)` after attention and linear projection
+
+**Implementation Details:**
+```python
+def __init__(self, embed_dim, num_heads, dropout=0.1):
+    super().__init__()
+    self.embed_dim = embed_dim
+    self.num_heads = num_heads
+    self.head_dim = embed_dim // num_heads
+    
+    self.q_linear = nn.Linear(embed_dim, embed_dim)
+    self.k_linear = nn.Linear(embed_dim, embed_dim)
+    self.v_linear = nn.Linear(embed_dim, embed_dim)
+    self.out_linear = nn.Linear(embed_dim, embed_dim)
+    self.dropout = nn.Dropout(dropout)
+```
+
+### 3. TransformerBlock
+```python
+class TransformerBlock(nn.Module):
+    """Transformer block with self-attention and feedforward"""
+```
+
+**Purpose:**
+A single block of a transformer: combines multi-head self-attention with a feedforward neural network, along with layer normalization and residual connections.
+
+**Components:**
+- **Attention layer:** Focuses on relationships between positions in the sequence
+- **Feedforward network:** Expands representation capacity (embed_dim → ff_dim → embed_dim)
+- **Residual connections + LayerNorm:** Stabilize and accelerate training
+
+**Flow:**
+```
+Input → self-attention → add & normalize → feedforward → add & normalize → output
+```
+
+**Inputs/Outputs:**
+- **Input:** `(batch_size, seq_len, embed_dim)`
+- **Output:** `(batch_size, seq_len, embed_dim)`
+
+**Implementation Details:**
+```python
+def __init__(self, embed_dim, num_heads, ff_dim, dropout=0.1):
+    super().__init__()
+    self.attention = MultiHeadSelfAttention(embed_dim, num_heads, dropout)
+    self.norm1 = nn.LayerNorm(embed_dim)
+    self.norm2 = nn.LayerNorm(embed_dim)
+    
+    self.feedforward = nn.Sequential(
+        nn.Linear(embed_dim, ff_dim),
+        nn.GELU(),
+        nn.Dropout(dropout),
+        nn.Linear(ff_dim, embed_dim),
+        nn.Dropout(dropout)
+    )
+```
+
+### 4. FocalLoss
+```python
+class FocalLoss(nn.Module):
+    """Focal Loss for addressing class imbalance"""
+```
+
+**Purpose:**
+Used for imbalanced multi-class classification, it reduces the loss contribution of easy examples and focuses more on hard examples.
+
+**Mathematical Formula:**
+```
+FL(p_t) = -α(1-p_t)^γ log(p_t)
+```
+Where:
+- `α`: weight of the class (optional)
+- `γ`: focusing parameter (higher → more focus on hard examples)
+- `p_t`: model's estimated probability for true class
+
+**Inputs/Outputs:**
+- **Inputs:** `inputs` (logits), `targets` (true labels)
+- **Output:** scalar loss
+
+**Implementation Details:**
+```python
+def __init__(self, alpha=1, gamma=2, reduction='mean'):
+    super().__init__()
+    self.alpha = alpha
+    self.gamma = gamma
+    self.reduction = reduction
+
+def forward(self, inputs, targets):
+    ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+    pt = torch.exp(-ce_loss)
+    focal_loss = self.alpha * (1-pt)**self.gamma * ce_loss
+    return focal_loss.mean() if self.reduction == 'mean' else focal_loss
+```
+
+### 5. AdvancedClassifierNetwork
+```python
+class AdvancedClassifierNetwork(nn.Module):
+    """Advanced Multi-Class Classifier with Transformer attention and multiple techniques"""
+```
+
+**Purpose:**
+This is your main classifier, combining several techniques:
+- Input normalization + projection
+- Transformer layers for sequence modeling / self-attention
+- Feature extraction via dense layers with LayerNorm + GELU
+- Attention pooling on features
+- Optional mixup augmentation
+- Final classifier producing num_classes outputs
+
+**Components:**
 
 #### Input Processing
 ```python
 # Input normalization and projection
 self.input_norm = nn.LayerNorm(embedding_dim)
 self.input_projection = nn.Linear(embedding_dim, hidden_dims[0])
+```
+
+#### Positional Encoding
+```python
+# Adds positional information for transformer
+self.pos_encoding = PositionalEncoding(hidden_dims[0])
 ```
 
 #### Transformer Layers
@@ -154,6 +424,32 @@ self.attention_pool = nn.Sequential(
     nn.Linear(hidden_dims[-1] // 4, 1)
 )
 ```
+
+#### Mixup Augmentation
+```python
+def mixup_data(self, x, y, alpha=0.4):
+    """Mixup data augmentation for regularization"""
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+    
+    batch_size = x.size(0)
+    index = torch.randperm(batch_size)
+    
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+```
+
+**Forward Pass:**
+```
+Normalize + project → positional encoding → transformer layers → feature extraction → attention pooling → concatenate → classifier → logits
+```
+
+**Inputs/Outputs:**
+- **Input:** `(batch_size, embedding_dim)` - STAR embeddings
+- **Output:** `(batch_size, num_classes)` - Author class logits
 
 ### 2. AdvancedClassifierTrainer
 Handles training with multiple optimization techniques:
@@ -408,29 +704,65 @@ STAR Embeddings → Input Processing → Transformer Blocks → Feature Extracti
 ```python
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
-        # Sinusoidal encoding formula:
-        # PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
-        # PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
+                            (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+    
+    def forward(self, x):
+        return x + self.pe[:x.size(0), :]
 ```
 
-**Why It's Important**: Even though we're processing single embeddings (not sequences), positional encoding helps the model understand the structure of the embedding space.
+**Mathematical Foundation**:
+```
+PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+```
+
+**Why It's Important**: Even though we're processing single embeddings (not sequences), positional encoding helps the model understand the structure of the embedding space and provides additional context for attention mechanisms.
 
 ### 2. Multi-Head Self-Attention
 **Purpose**: Allows the model to focus on different parts of the embedding simultaneously
 
 **Key Parameters**:
-- `embed_dim`: 1024 (input dimension)
-- `num_heads`: 8-12 (parallel attention mechanisms)
-- `head_dim`: embed_dim / num_heads
+- `embed_dim`: 768 (after projection)
+- `num_heads`: 12 (parallel attention mechanisms)
+- `head_dim`: 64 (embed_dim / num_heads)
 
 **Mathematical Foundation**:
 ```
 Attention(Q, K, V) = softmax(QK^T/√d_k)V
-Where:
-Q = Query matrix
-K = Key matrix  
-V = Value matrix
-d_k = dimension of keys
+MultiHead(Q, K, V) = Concat(head_1, ..., head_h)W^O
+where head_i = Attention(QW_i^Q, KW_i^K, VW_i^V)
+```
+
+**Implementation Details**:
+```python
+def forward(self, x):
+    batch_size, seq_len, embed_dim = x.size()
+    
+    # Linear projections
+    Q = self.q_linear(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
+    K = self.k_linear(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
+    V = self.v_linear(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
+    
+    # Scaled dot-product attention
+    scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
+    attention_weights = F.softmax(scores, dim=-1)
+    attention_weights = self.dropout(attention_weights)
+    
+    # Apply attention to values
+    context = torch.matmul(attention_weights, V)
+    context = context.transpose(1, 2).contiguous().view(
+        batch_size, seq_len, embed_dim
+    )
+    
+    return self.out_linear(context)
 ```
 
 ### 3. Transformer Block
@@ -445,6 +777,20 @@ Input → MultiHeadAttention → Add & Norm → FeedForward → Add & Norm → O
 - **FeedForward Network**: Non-linear transformation with GELU activation
 - **Residual Connections**: Helps with gradient flow
 
+**Implementation Details**:
+```python
+def forward(self, x):
+    # Self-attention with residual connection
+    attn_output = self.attention(x)
+    x = self.norm1(x + attn_output)
+    
+    # Feed-forward with residual connection
+    ff_output = self.feedforward(x)
+    x = self.norm2(x + ff_output)
+    
+    return x
+```
+
 ### 4. Focal Loss
 **Purpose**: Addresses class imbalance by focusing on hard-to-classify examples
 
@@ -457,37 +803,95 @@ p_t = model's estimated probability for true class
 γ = focusing parameter (default: 2)
 ```
 
+**Implementation Details**:
+```python
+def forward(self, inputs, targets):
+    ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+    pt = torch.exp(-ce_loss)
+    focal_loss = self.alpha * (1-pt)**self.gamma * ce_loss
+    return focal_loss.mean() if self.reduction == 'mean' else focal_loss
+```
+
 **Advantage**: Reduces the impact of well-classified examples, forcing the model to focus on challenging cases.
 
 ### 5. Advanced Classifier Network
 **Architecture Layers**:
 
 #### Input Processing:
-- Layer Normalization
-- Linear projection to first hidden dimension (768)
+```python
+# Layer Normalization + Linear Projection
+x = self.input_norm(x)  # (batch_size, 1024)
+x = self.input_projection(x)  # (batch_size, 768)
+```
 
 #### Transformer Stack:
-- 2-3 transformer blocks with self-attention
-- Positional encoding for sequence context
+```python
+# Positional Encoding + Transformer Blocks
+x = self.pos_encoding(x.unsqueeze(1)).squeeze(1)  # Add positional info
+for transformer in self.transformer_layers:
+    x = transformer(x)  # (batch_size, 768)
+```
 
 #### Feature Extraction:
-- Multi-layer perceptron with decreasing dimensions: 768 → 512 → 256
-- Layer normalization after each linear layer
-- GELU activation functions
-- Progressive dropout increase (0.15 → 0.18 → 0.21)
+```python
+# Progressive feature extraction with increasing dropout
+features = x  # (batch_size, 768)
+for layer in self.feature_extractor:
+    features = layer(features)  # 768 → 512 → 256
+```
 
 #### Attention Pooling:
-- Learns to weight important features
-- Creates attention-weighted feature representation
+```python
+# Learn attention weights
+attention_weights = self.attention_pool(features)  # (batch_size, 1)
+attention_weights = F.softmax(attention_weights, dim=0)
+weighted_features = features * attention_weights  # (batch_size, 256)
+```
+
+#### Feature Fusion:
+```python
+# Concatenate original and weighted features
+fused_features = torch.cat([x, weighted_features], dim=1)  # (batch_size, 1024)
+```
 
 #### Classification Head:
-- Concatenates original and attention-weighted features
-- 3-layer classifier with dimension reduction: 512 → 256 → 128 → num_classes
+```python
+# Final classification layers
+logits = self.classifier(fused_features)  # (batch_size, num_classes)
+```
 
 **Special Features**:
 - **Mixup Data Augmentation**: Creates virtual training examples by interpolating between real samples
 - **Weight Initialization**: Xavier uniform initialization for stable training
 - **Multi-scale Feature Fusion**: Combines different representations of the input
+
+### 6. Mixup Augmentation
+**Purpose**: Regularizes the model by creating virtual training examples
+
+**Implementation**:
+```python
+def mixup_data(self, x, y, alpha=0.4):
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+    
+    batch_size = x.size(0)
+    index = torch.randperm(batch_size)
+    
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+def mixup_criterion(self, criterion, pred, y_a, y_b, lam):
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+```
+
+**Benefits**:
+- Reduces overfitting
+- Improves generalization
+- Helps with class imbalance
+- Creates smoother decision boundaries
 
 ## Training Pipeline
 
