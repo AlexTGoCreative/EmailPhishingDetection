@@ -174,7 +174,7 @@ function getTagLabel(label) {
         'BITCOIN': 'BITCOIN',
         'SSN': 'SSN',
         'ROUTING_NUMBER': 'ROUTING',
-        'SUSPICIOUS_FILE': 'SUSPICIOUS'
+        'SUSPICIOUS_FILE': 'SUSPICIOUS_FILE'
     };
     return tagMap[label] || 'OTHER';
 }

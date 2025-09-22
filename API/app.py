@@ -12,83 +12,40 @@ REGEX_PATTERNS = [
     # URLs
     {"label": "URL", "pattern": r"https?://[^\s]+"},
     {"label": "URL", "pattern": r"www\.[^\s]+"},
-
-    # Email addresses (RFC 5322-compliant, cu re.VERBOSE pentru lizibilitate)
-    {
-        "label": "EMAIL",
-        "pattern": r"""
-        (                           # start full match
-          ([-!#-'*+\-/0-9=?A-Z^-~]+(\.[-!#-'*+\-/0-9=?A-Z^-~]+)*   # local part normal
-           |                                                       # OR
-           ("([ !#-[\]-~]|(\\[ \t -~]))+"))                        # quoted local part
-          @
-          (
-            [0-9A-Za-z]([0-9A-Za-z-]{0,61}[0-9A-Za-z])?            # domain labels
-            (\.[0-9A-Za-z]([0-9A-Za-z-]{0,61}[0-9A-Za-z])?)*      # dot-separated domain
-            |
-            \[
-              (                                                     # IP or IPv6 literal
-                (25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])
-                (\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}
-                |
-                IPv6:(
-                  (((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){6}
-                  |::((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){5}
-                  |[0-9A-Fa-f]{0,4}::((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){4}
-                  |(((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):)?(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}))?::((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){3}
-                  |(((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){0,2}(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}))?::((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){2}
-                  |(((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){0,3}(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}))?::(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):
-                  |(((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){0,4}(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}))?::
-                )
-                ((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3})
-                |
-                (25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])
-                (\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3})
-                |
-                (((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){0,5}(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}))?::(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3})
-                |
-                (((0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}):){0,6}(0|[1-9A-Fa-f][0-9A-Fa-f]{0,3}))?::
-              )
-              |
-              (?!IPv6:)[0-9A-Za-z-]*[0-9A-Za-z]:[!-Z^-~]+
-            )
-          \]
-        )""",
-        "flags": re.VERBOSE
-    },
-
-    # Phone numbers (US/international)
+    
+    # Email addresses
+    {"label": "EMAIL", "pattern": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"},
+    
+    # Phone numbers (more specific patterns - must have proper phone format)
     {"label": "PHONE", "pattern": r"\+?1[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}(?![0-9])"},
     {"label": "PHONE", "pattern": r"\+?[0-9]{1,3}[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}(?![0-9])"},
     {"label": "PHONE", "pattern": r"\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}(?![0-9])"},
-
+    
     # IP addresses
     {"label": "IP_ADDRESS", "pattern": r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"},
-
-    # Credit card numbers
+    
+    # Credit card numbers (exactly 16 digits with separators)
     {"label": "CREDIT_CARD", "pattern": r"\b[0-9]{4}[-.\s]?[0-9]{4}[-.\s]?[0-9]{4}[-.\s]?[0-9]{4}\b"},
     {"label": "CREDIT_CARD", "pattern": r"\b[0-9]{16}\b"},
-
-    # File extensions
-    {"label": "FILE", "pattern": r"\b[a-zA-Z0-9._-]+\.(exe|bat|cmd|scr|pif|com|zip|rar|7z|pdf|doc|docx|txt|jpg|png|gif|mp4|mp3|avi|mov)\b", "flags": re.IGNORECASE},
-    {"label": "FILE", "pattern": r"[a-zA-Z0-9._-]+\.(exe|bat|cmd|scr|pif|com|zip|rar|7z|pdf|doc|docx|txt|jpg|png|gif|mp4|mp3|avi|mov)(?![a-zA-Z0-9])", "flags": re.IGNORECASE},
-
-     # Suspicious file extensions
+    
+    
+    
+    # Suspicious file extensions
     {"label": "SUSPICIOUS_FILE", "pattern": r"\b[a-zA-Z0-9._-]+\.(exe|bat|cmd|scr|pif|com|zip|rar|7z)\b", "flags": re.IGNORECASE},
     {"label": "SUSPICIOUS_FILE", "pattern": r"[a-zA-Z0-9._-]+\.(exe|bat|cmd|scr|pif|com|zip|rar|7z)(?![a-zA-Z0-9])", "flags": re.IGNORECASE},
     
     # Bitcoin addresses
     {"label": "BITCOIN", "pattern": r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b"},
     {"label": "BITCOIN", "pattern": r"\bbc1[a-z0-9]{39,59}\b"},
-
-    # SSN
+    
+    # Social Security Numbers (US format)
     {"label": "SSN", "pattern": r"\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b"},
     {"label": "SSN", "pattern": r"\bSSN:\s*[0-9]{3}-[0-9]{2}-[0-9]{4}\b", "flags": re.IGNORECASE},
-
+    
     # Bank routing numbers
     {"label": "ROUTING_NUMBER", "pattern": r"\b[0-9]{9}\b"},
-
-    # Years
+    
+    # Years (4-digit years)
     {"label": "DATE", "pattern": r"\b(19|20)[0-9]{2}\b"},
 ]
 
