@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grammar AI - Entity Recognition</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Grammar AI</h1>
+        </header>
+        
+        <div class="main-content">
+            <div class="input-section" id="inputSection">
+                <h2>Enter text for analysis</h2>
+                <textarea id="textInput" placeholder="Enter your text here to identify people, organizations, locations, dates, URLs, emails, phone numbers, and detect phishing indicators..."></textarea>
+                <button id="analyzeBtn" onclick="analyzeText()">
+                    <span id="btnText">Analyze Text</span>
+                    <span id="loader" style="display: none;">Analyzing...</span>
+                </button>
+            </div>
+            
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <div class="highlighted-text" id="highlightedText">
+                    <!-- Highlighted text will be displayed here -->
+                </div>
+                
+                <div class="back-button-container">
+                    <button id="backBtn" onclick="showInputSection()">
+                        ← Back to Input
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend" id="legendSection">
+            <h3>Entity Types Legend</h3>
+            <div class="legend-items">
+                <!-- Basic Entities -->
+                <span class="legend-item"><span class="color-box person"></span> People (PERSON)</span>
+                <span class="legend-item"><span class="color-box organization"></span> Organizations (ORG)</span>
+                <span class="legend-item"><span class="color-box location"></span> Locations (GPE/LOC)</span>
+                <span class="legend-item"><span class="color-box date"></span> Dates (DATE)</span>
+                <span class="legend-item"><span class="color-box time"></span> Time (TIME)</span>
+                <span class="legend-item"><span class="color-box money"></span> Money (MONEY)</span>
+                <span class="legend-item"><span class="color-box quantity"></span> Quantities (CARDINAL/QUANTITY)</span>
+                
+                <!-- Contact Information -->
+                <span class="legend-item"><span class="color-box email"></span> Email (EMAIL)</span>
+                <span class="legend-item"><span class="color-box phone"></span> Phone (PHONE)</span>
+                
+                <!-- Technical -->
+                <span class="legend-item"><span class="color-box url"></span> URLs (URL)</span>
+                <span class="legend-item"><span class="color-box ip"></span> IP Addresses (IP_ADDRESS)</span>
+                
+                <!-- Financial -->
+                <span class="legend-item"><span class="color-box credit-card"></span> Credit Cards (CREDIT_CARD)</span>
+                <span class="legend-item"><span class="color-box bitcoin"></span> Bitcoin (BITCOIN)</span>
+                <span class="legend-item"><span class="color-box ssn"></span> SSN (SSN)</span>
+                
+                <!-- Suspicious -->
+                <span class="legend-item"><span class="color-box suspicious-file"></span> Suspicious Files</span>
+                
+                <span class="legend-item"><span class="color-box other"></span> Other</span>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
